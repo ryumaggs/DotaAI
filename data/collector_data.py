@@ -17,7 +17,7 @@ USE_HERO_NAMES   = True
 OUTPUT_JSON      = "pro_matches_draft.json"
 OUTPUT_CSV       = "pro_matches_draft.csv"
 API_KEY          = None
-RATE_LIMIT_DELAY = 1.5
+RATE_LIMIT_DELAY = 1.1
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_existing(json_path):
