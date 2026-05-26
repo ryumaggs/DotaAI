@@ -8,8 +8,11 @@ sys.path.append(str(BASE_DIR))
 import pandas as pd
 from main.transformer import *
 from main.util import parse_list
+from torch.utils.tensorboard import SummaryWriter
 
-DEVICE = 'cpu'
+
+DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+
 def df_to_tensors(df, name_to_id):
     """
     Convert a dataframe of matches into tensors ready for the model.
@@ -128,20 +131,32 @@ def new_training(epochs):
 
     base_optimizer = torch.optim.AdamW(base_model.parameters(), lr=1e-4, weight_decay=0.01)
 
-    for e in range(epochs):
+    #setup summary writer
+    
+
+    writer = SummaryWriter(log_dir="runs/")
+    global_step = 0
+    # close when done
+    writer.close()
+    for epoch in range(epochs):
         for hero_ids, labels in train_loader:
             base_model.train()
             preds = base_model(hero_ids.to(device))
-            loss  = criterion(preds, labels)
+            loss  = criterion(preds, labels.to(device))
             loss.backward()
             base_optimizer.step()
+            writer.add_scalar("Loss/train", loss.item(), global_step)
+            global_step += 1
         
         for hero_ids, labels in val_loader:
             base_model.eval()
             with torch.no_grad():
                 preds = base_model(hero_ids.to(device))
-                loss  = criterion(preds, labels)
+                val_loss  = criterion(preds, labels.to(device))
                 print('val loss: ', loss.item())
+
+            # log a scalar (e.g. loss per step)
+                writer.add_scalar("Loss/val", val_loss.item(), epoch)
 
         torch.save(base_model.state_dict(), BASE_DIR / "saved_models" / "draft_transformer.pt")
         
