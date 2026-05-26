@@ -9,7 +9,7 @@ import pandas as pd
 from main.transformer import *
 from main.util import parse_list
 
-DEVICE = 'cuda:0'
+DEVICE = 'cpu'
 def df_to_tensors(df, name_to_id):
     """
     Convert a dataframe of matches into tensors ready for the model.

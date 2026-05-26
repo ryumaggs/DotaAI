@@ -8,10 +8,11 @@ import sys
 sys.path.append(str(BASE_DIR))
 import pickle
 from data.data_util import get
+from data.update_meta import *
 
 # ── config ────────────────────────────────────────────────────────────────────
 K_NEW            = 1    # number of /proMatches calls to make for NEW (recent) matches
-K_OLD            = 1    # number of /proMatches calls to make for OLD (historical) matches
+K_OLD            = 0    # number of /proMatches calls to make for OLD (historical) matches
 USE_HERO_NAMES   = True
 OUTPUT_JSON      = "pro_matches_draft.json"
 OUTPUT_CSV       = "pro_matches_draft.csv"
@@ -232,10 +233,13 @@ if __name__ == "__main__":
             time.sleep(RATE_LIMIT_DELAY)
 
     if new_matches:
+        pro_matches_meta = load_meta()
         print(f"\nEnriching {len(new_matches)} collected matches...")
         new_matches = enrich(new_matches, id_to_name)
         all_matches = existing_matches + new_matches
         save(all_matches, OUTPUT_JSON, OUTPUT_CSV)
         print(f"\nDone. Total matches on record: {len(all_matches)}")
+        pro_matches_meta = update_meta(pro_matches_meta, new_matches)
+        save_meta(pro_matches_meta)
     else:
         print("\nNo new matches to add.")
