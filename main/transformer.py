@@ -35,6 +35,28 @@ class TransformerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(embed_dim)
         self.drop1 = nn.Dropout(dropout)
         self.drop2 = nn.Dropout(dropout)
+        self._init_weights()
+
+    def _init_weights(self):
+        # attention projections (linear, no activation) → xavier
+        nn.init.xavier_uniform_(self.attn.in_proj_weight)
+        nn.init.zeros_(self.attn.in_proj_bias)
+        nn.init.xavier_uniform_(self.attn.out_proj.weight)
+        nn.init.zeros_(self.attn.out_proj.bias)
+
+        # ffn[0]: linear → relu → kaiming
+        nn.init.kaiming_uniform_(self.ffn[0].weight, nonlinearity="relu")
+        nn.init.zeros_(self.ffn[0].bias)
+
+        # ffn[2]: linear → nothing → xavier
+        nn.init.xavier_uniform_(self.ffn[2].weight)
+        nn.init.zeros_(self.ffn[2].bias)
+
+        # layernorm → identity at init
+        nn.init.ones_(self.norm1.weight)
+        nn.init.zeros_(self.norm1.bias)
+        nn.init.ones_(self.norm2.weight)
+        nn.init.zeros_(self.norm2.bias)
 
     def forward(self, x):
         attn_out, _ = self.attn(x, x, x)

@@ -5,12 +5,16 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
+from tqdm import tqdm
 import pandas as pd
 from main.transformer import *
 from main.util import parse_list
+from torch.utils.tensorboard import SummaryWriter
 
-DEVICE = 'cpu'
-def df_to_tensors(df, name_to_id):
+
+DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+def df_to_tensors_full_draft(df, name_to_id):
     """
     Convert a dataframe of matches into tensors ready for the model.
 
@@ -79,13 +83,76 @@ def df_to_tensors(df, name_to_id):
 
     return hero_ids_t, team_ids_t, is_picks_t, labels_t
 
+def df_to_tensors_picks_only(df, name_to_id):
+    """
+    Converts dataframe to tensors containing only the 10 picked heroes,
+    in the order they were selected.
+
+    Returns:
+        hero_ids:  (N, 10) int tensor  — hero ID per pick slot in selection order
+        team_ids:  (N, 10) int tensor  — [0,0,0,0,0,1,1,1,1,1]
+        is_picks:  (N, 10) bool tensor — all True
+        labels:    (N,)    float tensor
+    """
+    TEAM_IDS = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+    IS_PICKS  = [True] * 10
+
+    all_hero_ids = []
+    all_labels   = []
+    skipped      = 0
+
+    for _, row in df.iterrows():
+        draft_order   = parse_list(row["draft_order"])
+        draft_teams   = parse_list(row["draft_teams"])
+        draft_is_pick = parse_list(row["draft_is_pick"])
+
+        if not (len(draft_order) == len(draft_teams) == len(draft_is_pick)):
+            skipped += 1
+            continue
+
+        # extract picks only, preserving selection order, split by team
+        radiant_picks = []
+        dire_picks    = []
+
+        for hero_name, team, is_pick in zip(draft_order, draft_teams, draft_is_pick):
+            if is_pick.strip().lower() != "true":
+                continue
+            hero_id = name_to_id.get(hero_name, 0)
+            if int(team) == 0:
+                radiant_picks.append(hero_id)
+            else:
+                dire_picks.append(hero_id)
+
+        # pad to 5 each if somehow incomplete
+        while len(radiant_picks) < 5:
+            radiant_picks.append(0)
+        while len(dire_picks) < 5:
+            dire_picks.append(0)
+
+        all_hero_ids.append(radiant_picks[:5] + dire_picks[:5])
+
+        label = 0.0 if str(row["radiant_win"]).strip().lower() == "true" else 1.0
+        all_labels.append(label)
+
+    if skipped:
+        print(f"Warning: skipped {skipped} malformed rows.")
+
+    N = len(all_hero_ids)
+
+    hero_ids_t = torch.tensor(all_hero_ids,          dtype=torch.long)
+    team_ids_t = torch.tensor([TEAM_IDS] * N,        dtype=torch.long)
+    is_picks_t = torch.tensor([IS_PICKS]  * N,       dtype=torch.bool)
+    labels_t   = torch.tensor(all_labels,            dtype=torch.float)
+
+    return hero_ids_t, team_ids_t, is_picks_t, labels_t
+
 def load_data(path_to_csv,
               name_to_id_path):
     df = pd.read_csv(path_to_csv)
     with open(name_to_id_path, 'rb') as file:
         name_to_id_dict = pickle.load(file)
     
-    hero_ids_t, _, _, labels_t = df_to_tensors(df, name_to_id_dict)
+    hero_ids_t, _, _, labels_t = df_to_tensors_full_draft(df, name_to_id_dict)
     dataset = TensorDataset(hero_ids_t, labels_t)
     dataset = TensorDataset(hero_ids_t, labels_t)
 
@@ -126,22 +193,36 @@ def new_training(epochs):
     if DEVICE != 'cpu':
         base_model.to(device)
 
-    base_optimizer = torch.optim.AdamW(base_model.parameters(), lr=1e-4, weight_decay=0.01)
+    base_optimizer = torch.optim.AdamW(base_model.parameters(), lr=1e-5, weight_decay=0.01)
 
-    for e in range(epochs):
+    #setup summary writer
+    
+
+    writer = SummaryWriter()
+    global_step = 0
+    # close when done
+    writer.close()
+    for epoch in tqdm(range(epochs)):
         for hero_ids, labels in train_loader:
             base_model.train()
             preds = base_model(hero_ids.to(device))
-            loss  = criterion(preds, labels)
+            loss  = criterion(preds, labels.to(device))
             loss.backward()
             base_optimizer.step()
+            writer.add_scalar("Loss/train", loss.item(), global_step)
+            global_step += 1
         
+        val_loss_accumulator = 0
+        val_loss_batch_counter = 0
         for hero_ids, labels in val_loader:
             base_model.eval()
             with torch.no_grad():
                 preds = base_model(hero_ids.to(device))
-                loss  = criterion(preds, labels)
-                print('val loss: ', loss.item())
+                val_loss  = criterion(preds, labels.to(device))
+                val_loss_accumulator += val_loss.item()
+                val_loss_batch_counter += 1
+
+        writer.add_scalar("Loss/val", val_loss_accumulator / val_loss_batch_counter, epoch)
 
         torch.save(base_model.state_dict(), BASE_DIR / "saved_models" / "draft_transformer.pt")
         
@@ -152,4 +233,4 @@ def continue_training():
     pass
 
 if __name__ == "__main__":
-    new_training(epochs=5)
+    new_training(epochs=200)
