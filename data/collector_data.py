@@ -11,13 +11,13 @@ from data.data_util import get
 from data.update_meta import *
 
 # ── config ────────────────────────────────────────────────────────────────────
-K_NEW            = 1    # number of /proMatches calls to make for NEW (recent) matches
-K_OLD            = 0    # number of /proMatches calls to make for OLD (historical) matches
+K_NEW            = 0    # number of /proMatches calls to make for NEW (recent) matches
+K_OLD            = 2    # number of /proMatches calls to make for OLD (historical) matches
 USE_HERO_NAMES   = True
 OUTPUT_JSON      = "pro_matches_draft.json"
 OUTPUT_CSV       = "pro_matches_draft.csv"
 API_KEY          = None
-RATE_LIMIT_DELAY = 1.1
+RATE_LIMIT_DELAY = 1.5
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_existing(json_path):
