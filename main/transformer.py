@@ -21,14 +21,16 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:, :x.size(1), :]
         return self.dropout(x)
 
-
 class TransformerBlock(nn.Module):
     def __init__(self, embed_dim, num_heads, ff_dim, dropout=0.1):
         super().__init__()
+        mask = torch.tril(torch.ones(24,24))
+        self.register_buffer('tril',mask.masked_fill(mask==0, float('-inf')))
+
         self.attn  = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
         self.ffn   = nn.Sequential(
             nn.Linear(embed_dim, ff_dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(ff_dim, embed_dim),
         )
         self.norm1 = nn.LayerNorm(embed_dim)
@@ -59,41 +61,41 @@ class TransformerBlock(nn.Module):
         nn.init.zeros_(self.norm2.bias)
 
     def forward(self, x):
-        attn_out, _ = self.attn(x, x, x)
+        seq_len = x.size(1)
+        attn_out, _ = self.attn(x, x, x, attn_mask=self.tril[:seq_len, :seq_len])
         x = self.norm1(x + self.drop1(attn_out))
         ffn_out = self.ffn(x)
         x = self.norm2(x + self.drop2(ffn_out))
         return x
-
 
 class DraftTransformer(nn.Module):
     def __init__(self, num_heroes=256, embed_dim=64, num_heads=4,
                  ff_dim=128, num_layers=2, dropout=0.1):
         super().__init__()
         # +1 for a PAD token (id=0) to handle missing entries gracefully
+        self.pos_embed  = nn.Embedding(24, embed_dim)  # 24 = draft sequence length
         self.hero_embed  = nn.Embedding(num_heroes + 1, embed_dim, padding_idx=0)
         # learned token type embedding: 0=radiant pick, 1=radiant ban, 2=dire pick, 3=dire ban
-        self.pos_encoder = PositionalEncoding(embed_dim, dropout=dropout)
-        self.cls_token   = nn.Parameter(torch.randn(1, 1, embed_dim))
         self.blocks      = nn.ModuleList([
             TransformerBlock(embed_dim, num_heads, ff_dim, dropout)
             for _ in range(num_layers)
         ])
-        self.head = nn.Linear(embed_dim, 1)   # no sigmoid
-        
+        self.head = nn.Linear(embed_dim, num_heroes)   # no sigmoid
+    
+    def process_data(self, all_data_info, device=torch.device('cpu')):
+        return all_data_info[0].to(device)
+
     def forward(self, hero_ids):
         """
         hero_ids: (batch, 24) — hero IDs in draft order
         """
-        x = self.hero_embed(hero_ids)  # (batch, 24, embed_dim)
-        x = self.pos_encoder(x)                                     # add positional encoding
         
-        # prepend CLS
-        cls = self.cls_token.expand(x.size(0), -1, -1)             # (batch, 1, embed_dim)
-        x = torch.cat([cls, x], dim=1)                             # (batch, 25, embed_dim)
+        # in forward:
+        positions = torch.arange(hero_ids.size(1), device=hero_ids.device)  # (24,)
+        x = self.hero_embed(hero_ids) + self.pos_embed(positions)      
 
         for block in self.blocks:
             x = block(x)
 
-        cls_out = x[:, 0, :]                                        # (batch, embed_dim)
-        return self.head(cls_out).squeeze(-1)                       # (batch,)
+        return self.head(x)           
+    
