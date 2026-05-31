@@ -2,3 +2,4 @@ saved_models/
 main/runs/
 data/pro_matches_draft.json
 hidden/
+secrets/
