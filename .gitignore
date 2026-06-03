@@ -1,5 +1,6 @@
 saved_models/
 main/runs/
 data/pro_matches_draft.json
+data/match_cache
 hidden/
 secrets/
