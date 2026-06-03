@@ -260,7 +260,6 @@ def flatten_objectives(parsed):
     return flat
 
 
-
 def enrich(matches, id_to_name=None):
     total   = len(matches)
     valid   = []
