@@ -99,3 +99,28 @@ class DraftTransformer(nn.Module):
 
         return self.head(x)           
     
+def build_availability_mask_all_positions(seq, vocab_size,):
+    """
+    a core compoenent of both draft and objective transformers.
+
+    it builds a mask such that any vocabulary that already exists in the sequence
+    cannot exist again in the sequence
+
+    
+    seq: (B, T) — input token ids
+    Returns: (B, T, V) BoolTensor, True = available at that position
+    """
+    B, T = seq.shape
+    device = seq.device
+
+    one_hot = torch.zeros(B, T, vocab_size, dtype=torch.long, device=device)
+    one_hot.scatter_(2, seq.unsqueeze(2), 1)
+
+    cumsum = one_hot.cumsum(dim=1)
+
+    shifted = torch.cat([
+        torch.zeros(B, 1, vocab_size, dtype=torch.long, device=device),
+        cumsum[:, :-1, :]
+    ], dim=1)
+
+    return shifted == 0  # (B, T, V)

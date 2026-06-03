@@ -142,21 +142,6 @@ def df_to_tensors_picks_only(df, name_to_id):
 
     return hero_ids_t, team_ids_t, is_picks_t, labels_t
 
-def augment_dataset(dataset):
-    hero_ids, team_ids, is_picks, labels = dataset.tensors
-    
-    # flip team ids (0->1, 1->0) and invert labels
-    aug_team_ids = 1 - team_ids
-    aug_labels = 1 - labels
-    
-    # concatenate original and augmented
-    new_hero_ids = torch.cat([hero_ids, hero_ids], dim=0)
-    new_team_ids = torch.cat([team_ids, aug_team_ids], dim=0)
-    new_is_picks = torch.cat([is_picks, is_picks], dim=0)
-    new_labels   = torch.cat([labels, aug_labels], dim=0)
-    
-    return TensorDataset(new_hero_ids, new_team_ids, new_is_picks, new_labels)
-
 def load_data(path_to_csv,
               name_to_id_path):
     df = pd.read_csv(path_to_csv)
@@ -165,8 +150,6 @@ def load_data(path_to_csv,
     
     hero_ids_t, team_ids_t, is_picks_t, labels_t = df_to_tensors_full_draft(df, name_to_id_dict)
     dataset = TensorDataset(hero_ids_t, team_ids_t, is_picks_t, labels_t)
-
-    dataset = augment_dataset(dataset)
 
     return dataset
 
