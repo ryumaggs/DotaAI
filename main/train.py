@@ -24,7 +24,7 @@ def create_model():
                  embed_dim=embed_dim, 
                  num_heads=4, 
                  ff_dim=4*embed_dim, #standard for gpt
-                 num_layers=6, dropout=0.1)
+                 num_layers=3, dropout=0.1)
     #model = DraftMLP()
     #criterion = nn.BCEWithLogitsLoss()
     criterion = torch.nn.functional.cross_entropy
