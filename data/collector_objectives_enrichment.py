@@ -3,6 +3,7 @@ import json
 import time
 import requests
 from pathlib import Path
+from data_util import *
 
 def parse_objectives(objectives):
     result = {
@@ -161,51 +162,53 @@ def flatten_objectives(parsed):
     return flat
 
 
-def fetch_and_enrich(input_csv, output_csv, cache_dir='match_cache', delay=1.5):
+def fetch_and_enrich(input_csv, output_csv, api_key = None, cache_dir='match_cache', delay=1.5):
     df        = pd.read_csv(input_csv)
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(exist_ok=True)
-
-    objective_rows = []
+    params={'api_key': api_key}
+    enriched_rows = []
 
     for idx, row in df.iterrows():
         match_id   = row['match_id']
         cache_path = cache_dir / f"{match_id}.json"
 
-        # load from cache if already fetched
         if cache_path.exists():
             with open(cache_path) as f:
                 data = json.load(f)
             print(f"[{idx+1}/{len(df)}] {match_id} loaded from cache")
         else:
             try:
-                resp = requests.get(f"https://api.opendota.com/api/matches/{match_id}")
+                if api_key is not None:
+                    resp = requests.get(f"https://api.opendota.com/api/matches/{match_id}", params=params)
+                else:
+                    resp = requests.get(f"https://api.opendota.com/api/matches/{match_id}")
                 resp.raise_for_status()
                 data = resp.json()
                 with open(cache_path, 'w') as f:
                     json.dump(data, f)
                 print(f"[{idx+1}/{len(df)}] {match_id} fetched")
-                time.sleep(delay)  # respect rate limit
+                time.sleep(delay)
             except Exception as e:
                 print(f"[{idx+1}/{len(df)}] {match_id} FAILED: {e}")
-                objective_rows.append({})
-                continue
-
+                continue  # skip this row entirely
+            
         objectives = data.get('objectives') or []
         parsed     = parse_objectives(objectives)
         flat       = flatten_objectives(parsed)
-        objective_rows.append(flat)
+        # combine original row with new objective columns
+        enriched_rows.append({**row.to_dict(), **flat})
 
-    objectives_df = pd.DataFrame(objective_rows)
-    result_df     = pd.concat([df.reset_index(drop=True), objectives_df], axis=1)
+    result_df = pd.DataFrame(enriched_rows)
     result_df.to_csv(output_csv, index=False)
-    print(f"Saved to {output_csv}")
+    print(f"Saved {len(result_df)} rows to {output_csv}")
 
 
 if __name__ == '__main__':
     fetch_and_enrich(
         input_csv  = 'pro_matches_draft.csv',
         output_csv = 'pro_matches_draft_objectives.csv',
+        api_key = load_api_key(),
         cache_dir  = 'match_cache',
-        delay      = 1.5,
+        delay      = 0.1,
     )
