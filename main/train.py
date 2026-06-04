@@ -70,7 +70,6 @@ def topk_accuracy(logits, targets, k=5, seq=None):
 def new_training(epochs):
     dataset = DraftDataset(BASE_DIR / "data" / "pro_matches_draft_objectives.csv",
                        BASE_DIR / "data" / "name_to_id.pikl")
-    
     n = len(dataset)
     train_size = int(0.8 * n)
     val_size   = int(0.1 * n)
