@@ -9,7 +9,7 @@ import pandas as pd
 from main.transformer import *
 from torch.utils.tensorboard import SummaryWriter
 from main.mlp import DraftMLP
-from main.data import DraftDataset
+from main.decoder_data import DraftDataset
 
 from torch.utils.data import DataLoader, TensorDataset, random_split
 
