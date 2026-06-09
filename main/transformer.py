@@ -1,6 +1,10 @@
 import torch
 import torch.nn as nn
 import math
+import sys
+from pathlib import Path
+BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.append(str(BASE_DIR))
 
 class PositionalEncoding(nn.Module):
     def __init__(self, embed_dim, max_len=25, dropout=0.1):  # 24 tokens + CLS
@@ -70,17 +74,24 @@ class TransformerBlock(nn.Module):
 
 class DraftTransformer(nn.Module):
     def __init__(self, num_heroes=256, embed_dim=64, num_heads=4,
-                 ff_dim=128, num_layers=2, dropout=0.1):
+                 ff_dim=128, num_layers=2, dropout=0.1, device=torch.device('cuda:0')):
         super().__init__()
         # +1 for a PAD token (id=0) to handle missing entries gracefully
-        self.pos_embed  = nn.Embedding(24, embed_dim)  # 24 = draft sequence length
-        self.hero_embed  = nn.Embedding(num_heroes + 1, embed_dim, padding_idx=0)
+        self.pos_embed  = nn.Embedding(24+1, embed_dim)  # 24 = draft sequence length, 1 for bos
+        self.hero_embed  = nn.Embedding(num_heroes, embed_dim, padding_idx=0)
+        self.counter_embed = nn.Linear(num_heroes, embed_dim)
+        self.synergy_embed = nn.Linear(num_heroes, embed_dim)
         # learned token type embedding: 0=radiant pick, 1=radiant ban, 2=dire pick, 3=dire ban
         self.blocks      = nn.ModuleList([
             TransformerBlock(embed_dim, num_heads, ff_dim, dropout)
             for _ in range(num_layers)
         ])
         self.head = nn.Linear(embed_dim, num_heroes)   # no sigmoid
+        counter_matrix = torch.load(BASE_DIR / 'data' / 'counter_matrix.pt').to(device)
+        synergy_matrix = torch.load(BASE_DIR / 'data' / 'synergy_matrix.pt').to(device)
+
+        self.counter_matrix = torch.nn.functional.pad(counter_matrix, (0, 1, 0, 1))  # [127, 127] -> [128, 128]
+        self.synergy_matrix = torch.nn.functional.pad(synergy_matrix, (0, 1, 0, 1))  # [127, 127] -> [128, 128]
     
     def process_data(self, all_data_info, device=torch.device('cpu')):
         return all_data_info[0].to(device)
@@ -89,10 +100,14 @@ class DraftTransformer(nn.Module):
         """
         hero_ids: (batch, 24) — hero IDs in draft order
         """
-        
         # in forward:
         positions = torch.arange(hero_ids.size(1), device=hero_ids.device)  # (24,)
-        x = self.hero_embed(hero_ids) + self.pos_embed(positions)      
+        self.pos_embed(positions) 
+
+        x = self.hero_embed(hero_ids) + \
+            self.pos_embed(positions) + \
+            self.counter_embed(self.counter_matrix[hero_ids]) + \
+            self.synergy_embed(self.synergy_matrix[hero_ids])     
 
         for block in self.blocks:
             x = block(x)
@@ -122,5 +137,7 @@ def build_availability_mask_all_positions(seq, vocab_size,):
         torch.zeros(B, 1, vocab_size, dtype=torch.long, device=device),
         cumsum[:, :-1, :]
     ], dim=1)
+    mask = shifted == 0  # (B, T, V)
+    mask[:, :, -1] = False  # always mask BOS
 
-    return shifted == 0  # (B, T, V)
+    return mask # (B, T, V)
