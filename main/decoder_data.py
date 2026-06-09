@@ -156,16 +156,12 @@ def df_to_tensors_picks_only(df, name_to_id):
 
     return hero_ids_t, team_ids_t, is_picks_t, labels_t
 
-def load_data(path_to_csv,
-              name_to_id_path):
-    df = pd.read_csv(path_to_csv)
-    with open(name_to_id_path, 'rb') as file:
-        name_to_id_dict = pickle.load(file)
-    
+def load_data(df,
+              name_to_id_dict):
     hero_ids_t, team_ids_t, is_picks_t, labels_t = df_to_tensors_full_draft(df, name_to_id_dict)
     dataset = TensorDataset(hero_ids_t, team_ids_t, is_picks_t, labels_t)
 
-    return dataset
+    return dataset, max(name_to_id_dict.values())+1
 
 def convert_to_torch_dataset(dataset):
     # define split sizes
@@ -184,14 +180,33 @@ def convert_to_torch_dataset(dataset):
 
 class DraftDataset(torch.utils.data.Dataset):
     def __init__(self, path_to_csv, name_to_id_path):
-        dataset = load_data(path_to_csv, name_to_id_path)
-        self.hero_ids = dataset.tensors[0]  # (N, 24)
+        data_df = pd.read_csv(path_to_csv)
+        with open(name_to_id_path, 'rb') as file:
+            name_to_id_dict = pickle.load(file)
+
+        dataset, self.max_id = load_data(data_df, name_to_id_dict)
+        hero_ids = dataset.tensors[0]  # (N, 24)
+        self.hero_ids = self.add_bos_token(hero_ids, len(name_to_id_dict)) #(N, 25) adds starting BOS token
+
+    def add_bos_token(self, sequences: torch.Tensor, bos_id: int) -> torch.Tensor:
+        """
+        Prepends a BOS token to every sequence.
+        
+        Args:
+            sequences: [N, 24] tensor of hero IDs
+            bos_id:    integer ID reserved for BOS (typically num_heroes)
+        
+        Returns:
+            [N, 25] tensor with BOS prepended
+        """
+        bos = torch.full((sequences.shape[0], 1), bos_id, dtype=sequences.dtype)
+        return torch.cat([bos, sequences], dim=1)  # [N, 25]
 
     def __len__(self):
         return self.hero_ids.size(0)
 
     def __getitem__(self, idx):
-        sequence = self.hero_ids[idx]  # (24,)
-        x = sequence[:-1]              # (23,)
-        y = sequence[1:]               # (23,)
+        sequence = self.hero_ids[idx]  # (25,)
+        x = sequence[:-1]              # (24,)
+        y = sequence[1:]               # (24,)
         return x, y
