@@ -1,10 +1,10 @@
-# Dota Draft and Objectives Sequence Predictor
+# Dota Draft Sequence and Match Outcome Predictor
 
 Focuses only on professional matches in the ESPORTS scene of the game Dota2
 
-Predicts Hero Draft (24 hero sequence) with 85%+ top-5 accuracy
+Draft Sequence - Predicts Hero Draft (24 hero sequence) with up to 50%+ top-5 accuracy over each sequence slot
 
-Predicts objectives taken sequence of game (WIP) culminating in win or loss
+Match Outcome - Predicts win/loss based on engineered features based on only team hero draft, 80%+ accuracy
 
 ## Model Architecture
 
@@ -13,13 +13,44 @@ Predicts objectives taken sequence of game (WIP) culminating in win or loss
 - Vocabulary: number of heros in Dota 2
 - Sequence length, 24 heros. (total of 10 heros picked and 14 heroes banned in captains mode alternating sequence)
 
-### Objectives sequence predictor
-Objectives in Dota2 refer to Towers, Roshan, Barracks, and the Ancient (win/lose). 
-
-- Decoder transformer with cross attention to draft predictor sequence encoding.
-- Vocabulary: (Roshan x3) + (Towers x 2-teams) + (6 barracks x 2 teams) + (2 ancient)
-- Sequence length: Varrying depending on how the game proceeds.
-
+- Current status: On Hold
+  - 14,000 data points is not a lot of points to train a transformer from scratch
+  - Not robust to time - the exact hero ID's picked are dependent on the current meta.
+- Investigating:
+  - Hero embeddings: Some heroes share similarities to roles other heroes have (e.g. Lion and Shadow Shaman provide a lot of single target lockdown)
+  - The idea is that people draft based on Roles that need to be filled
+  - The exact hero that fills that role is meta dependent
+  - If we can embed similar roled heroes together, could lead to better prediction than attempting to predict the exact hero
+  - Alternatively: Feed in meta information as cross attention to sway hero picks to conform more closely to the meta
+### Match Outcome Prediction:
+- Simple Logistic regression model based upon a single engineered feature: Draft Advantage
+- Draft Advantage Description:
+  - Assumes two teams of 5 heroes
+    - Radiant: [A, B, C, D, E]
+    - Dire: [1, 2, 3, 4, 5]
+  - Computes two values, one per team
+  - Team Synergy Advantage: Summation of - For every hero pair and ordering (i,j) , compute (% games won when i, j are on the same team) - (% games won of just hero i)
+    - for all i,j within the same team
+  - Counter Pick Advantage: Summation of - For every hero pair and ordering (i,j), compute (% games won when i, j are on opposing teams) - (% games own just by hero i)
+    - for all i,j where i and j come from different teams
+  - Final Draft advantage value: (Radiant Synergy + Radiant Counterpick) - (Dire Synergy + Dire Counterpick) as a single float
+- This feature alone gives an 80% win rate prediction
+#### Unsupervised Analaysis of Draft Advantage Custom Feature
+![Hisotgram Visualization of Predicting by rule: Draft Advantage > 0](main/test_hist.png)
+Figure 1. Histogram of very basic match prediction. This histogram is created simply by predicting a match success as: Radiant wins if Draft Advantage > 0, Dire otherwise. This uses the entire data set (no witheld training and testing) and serves as a proof of concept. Of the 14,000 professional games in the data set, 11,000 of the 14,000 are correctly predicted as win/loss just based on our Draft Advantage Value. 
+- Blue = Radiant predicted to win and radiant wins. 
+- Green = Radiant predicted to win and dire wins
+- Yellow = Dire predicted to win and dire wins
+- Orange = Dire predicted to win and radiant wins
+#### Supervised Learning using Draft Advantage Custom Feature
+- Constructed a simple data set with 14,000 professional matches, and a SINGLE FEATURE: draft advantage
+  - THE MOST RECENT 15% of matches are witheld for testing
+  - The remaining older 85% of matches are used for training
+- Applied very simple logistic regression on training data to train a calibrator
+  - Calibrator outputs the probability of radiant winning given two team compositions
+- Assessed calibrator using calibration curve analysis on testing data
+![Calibration curve](main/calibration_curve.png)
+Figure 2. Calibration Curve on testing data using a single custom feature + logistic regression. Very solid results
 ## Data
 
 ### OpenDota
