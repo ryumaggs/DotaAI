@@ -1,6 +1,8 @@
 saved_models/
 main/runs/
 data/pro_matches_draft.json
+data/pro_matches_draft_objectives_nonfilteredcopy.csv
 data/match_cache
+data/collect_data.bat
 hidden/
 secrets/
