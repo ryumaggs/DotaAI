@@ -211,13 +211,12 @@ def plot_histogram(data: dict[str, list[float]], k: int, save_path: str) -> None
     plt.close(fig)
     print(f"Saved histogram to: {save_path}")
 
-def train_calibrator(counter_matrix, synergy_matrix, name_to_index_dict):
+def train_calibrator(df, counter_matrix, synergy_matrix, name_to_index_dict):
     test_stop_index = int(0.15*len(df))
 
     test_scores, test_labels = [], []
     all_scores, all_labels = [], []
     for cur_index in tqdm(range(len(df))):
-        
         cur_row = df.iloc[cur_index]
         team0_adv, team1_adv = compute_hero_advantages(cur_row, counter_matrix, synergy_matrix, name_to_index_dict)
         team0sum = sum((list(team0_adv.values())))
@@ -237,7 +236,7 @@ def train_calibrator(counter_matrix, synergy_matrix, name_to_index_dict):
     cal.fit(all_scores, all_labels)
 
     # Save
-    joblib.dump(cal, "calibrator.pkl")
+    #joblib.dump(cal, "calibrator.pkl")
 
     return cal, np.array(test_scores).reshape(-1, 1), np.array(test_labels) #all indices before this are considered testing and were not seen in training
           
@@ -252,7 +251,7 @@ if __name__ == "__main__":
 
     import joblib
 
-    cal, X_test, y_test = train_calibrator(counter_matrix, synergy_matrix, name_to_index_dict)
+    cal, X_test, y_test = train_calibrator(df, counter_matrix, synergy_matrix, name_to_index_dict)
 
     prob_pred = cal.predict_proba(X_test)[:, 1]  # shape (N,)
 
@@ -268,7 +267,7 @@ if __name__ == "__main__":
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     fig.tight_layout()
-    fig.savefig("calibration_curve.png", dpi=150)
+    #fig.savefig("calibration_curve.png", dpi=150)
         
     from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
 
