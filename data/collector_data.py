@@ -12,8 +12,8 @@ from data.update_meta import *
 import requests
 
 # ── config ────────────────────────────────────────────────────────────────────
-K_NEW            = 2    # number of /proMatches calls to make for NEW (recent) matches
-K_OLD            = 10
+K_NEW            = 4    # number of /proMatches calls to make for NEW (recent) matches
+K_OLD            = 1
 USE_HERO_NAMES   = True
 OUTPUT_JSON      = "pro_matches_draft.json"
 OUTPUT_CSV       = "pro_matches_draft_objectives.csv"
@@ -54,7 +54,7 @@ def fetch_pro_matches_newer(k, seen_ids, max_match_id, api_key = None):
         if not batch:
             print(f"  [new] Empty response on call {i+1}, stopping.")
             break
-
+        lowest_new_id = None
         new = 0
         overlap = False
         for m in batch:
@@ -64,12 +64,16 @@ def fetch_pro_matches_newer(k, seen_ids, max_match_id, api_key = None):
                 seen_ids.add(m["match_id"])
                 matches.append(m)
                 new += 1
+            if lowest_new_id is None or m['match_id'] < lowest_new_id:
+                lowest_new_id = m['match_id']
 
         print(f"  [new] Call {i+1}/{k}: +{new} new matches")
+        print("Params: ", params)
 
         if overlap:
-            print(f"  [new] Overlap detected, stopping.")
-            break
+            print(f"  [new] Overlap detected, continuing")
+
+        params['less_than_match_id'] = lowest_new_id
 
         time.sleep(RATE_LIMIT_DELAY)
 
@@ -260,6 +264,26 @@ def flatten_objectives(parsed):
     return flat
 
 
+def is_valid_match(match_data):
+    '''
+    I have realized that pro matches can contain
+    low MMR players because they p lay in some open qualifier
+
+    This code should filter out any matches that have
+    explicit players who are less than immortal rank
+
+    If a player is unknown rank, the code is optimistic and assumes they are immortal
+    '''
+    players = match_data.get("players", [])
+    for player in players:
+        rank = player.get("rank_tier")
+        if rank is None or rank == 0:
+            continue  # unknown is fine
+        if rank < 80:  # known rank but not immortal
+            return False
+    return True
+
+
 def enrich(matches, id_to_name=None):
     total   = len(matches)
     valid   = []
@@ -275,6 +299,10 @@ def enrich(matches, id_to_name=None):
             )
             resp.raise_for_status()
             detail = resp.json()
+
+            if not is_valid_match(detail):
+                print("Match had players less than immortal rank, skipping...")
+                continue
 
             # --- original enrichment ---
             picks_bans = detail.get("picks_bans") or []
@@ -393,7 +421,7 @@ def save(matches, json_path, csv_path):
 
 if __name__ == "__main__":
     try:
-        with open(BASE_DIR / 'data' / 'id_to_name.pikl', 'rb') as file:
+        with open(BASE_DIR / 'data' / 'name_id_index_maps' / 'id_to_name.pikl', 'rb') as file:
             id_to_name = pickle.load(file)
     except Exception:
         print("Error: Need to call collector_hero.py first to update hero information. Exiting...")
